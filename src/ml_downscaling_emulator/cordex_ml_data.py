@@ -1,7 +1,6 @@
 """Loading CORDEX ML data into PyTorch"""
 
 import logging
-import cftime
 import cf_xarray  # noqa: F401
 import gc
 import numpy as np
@@ -14,22 +13,14 @@ import xarray as xr
 from mlde_utils.transforms import build_input_transform, build_target_transform
 
 DATA_PATH = Path(os.getenv("DATA_PATH"))
-DATASETS_PATH = DATA_PATH / "datasets"
-
-TIME_RANGE = (
-    cftime.Datetime360Day(1980, 12, 1, 12, 0, 0, 0, has_year_zero=True),
-    cftime.Datetime360Day(2080, 11, 30, 12, 0, 0, 0, has_year_zero=True),
-)
-
-VAL_SPLIT_YEARS = [1967, 1975, 2087, 2095]
+# Zarr stores live under mlde-data/data/{dataset_name}/{split}/
+DATASETS_PATH = DATA_PATH / "mlde-data" / "data"
 
 logger = logging.getLogger(__name__)
 
 
 def get_variables(config):
-    predictor_variables = [
-        f"{v}_{p}" for v in ["t", "u", "v", "z", "q"] for p in [500, 700, 850]
-    ]
+    predictor_variables = list(config.data.predictor_variables)
     target_variables = config.data.target_variables
     static_variables = config.data.static_variables
 
@@ -38,23 +29,17 @@ def get_variables(config):
 
 def _experiment_path(dataset_name, split):
     split_dir = split
-    if split == "val":
-        split_dir = "train"
-    elif split == "train+val":
+    if split == "train+val":
         split_dir = "train"
 
     return DATASETS_PATH / dataset_name / split_dir
 
 
-def _open_raw_split(filepath, split):
-    ds = xr.open_dataset(filepath)
-
-    if split in ["train", "val"]:
-        split_mask = ds["time.year"].isin(VAL_SPLIT_YEARS)
-        if split == "train":
-            split_mask = ~split_mask
-        ds = ds.sel(time=split_mask)
-
+def _open_zarr_split(zarr_path):
+    ds = xr.open_zarr(zarr_path)
+    # Zarr stores have an ensemble_member dim; squeeze it out
+    if "ensemble_member" in ds.dims:
+        ds = ds.squeeze("ensemble_member", drop=True)
     if "axis" not in ds["time"].attrs:
         ds["time"].attrs["axis"] = "T"
     return ds
@@ -65,10 +50,7 @@ def open_raw_dataset_split_predictands(
     split,
 ):
     experiment_path = _experiment_path(dataset_name, split)
-
-    filepath = experiment_path / "target" / "pr_tasmax.nc"
-
-    return _open_raw_split(filepath, split)
+    return _open_zarr_split(experiment_path / "predictands.zarr")
 
 
 def open_raw_dataset_split_predictors(
@@ -76,21 +58,17 @@ def open_raw_dataset_split_predictors(
     split,
 ):
     experiment_path = _experiment_path(dataset_name, split)
-
-    filepath = experiment_path / "predictors" / "Variable_fields.nc"
-
-    return _open_raw_split(filepath, split)
+    return _open_zarr_split(experiment_path / "predictors.zarr")
 
 
 def open_raw_dataset_split_static_inputs(
     dataset_name,
     split,
 ):
-    experiment_path = _experiment_path(dataset_name, split)
-
-    filepath = experiment_path / "predictors" / "Static_fields.nc"
-
-    return xr.open_dataset(filepath)
+    # Static fields are time-invariant; always read from the train directory
+    static_path = (_experiment_path(dataset_name, "train")
+                   / "predictors" / "Static_fields.nc")
+    return xr.open_dataset(static_path)
 
 
 def get_predictor_transform(
