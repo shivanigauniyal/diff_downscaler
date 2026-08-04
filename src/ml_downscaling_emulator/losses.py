@@ -181,7 +181,7 @@ def get_ddpm_loss_fn(vpsde, train, reduce_mean=True):
   return loss_fn
 
 
-def get_step_fn(sde, train, optimize_fn=None, reduce_mean=False, continuous=True, likelihood_weighting=False, deterministic=False):
+def get_step_fn(sde, train, optimize_fn=None, reduce_mean=False, continuous=True, likelihood_weighting=False, deterministic=False, amp=False):
   """Create a one-step training/evaluation function.
 
   Args:
@@ -192,6 +192,8 @@ def get_step_fn(sde, train, optimize_fn=None, reduce_mean=False, continuous=True
     likelihood_weighting: If `True`, weight the mixture of score matching losses according to
       https://arxiv.org/abs/2101.09258; otherwise use the weighting recommended by our paper.
     deterministic: If true, use deterministic mode loss, else use diffusion losses.
+    amp: If `True`, run the forward/loss computation under bfloat16 autocast (mixed precision) to
+      reduce memory usage. Backward pass and optimizer step remain in full precision. No-op on CPU.
 
   Returns:
     A one-step function for training or evaluation.
@@ -228,10 +230,12 @@ def get_step_fn(sde, train, optimize_fn=None, reduce_mean=False, continuous=True
       loss: The average loss value of this state.
     """
     model = state['model']
+    device_type = 'cuda' if batch.is_cuda else 'cpu'
     if train:
       optimizer = state['optimizer']
       optimizer.zero_grad()
-      loss = loss_fn(model, batch, cond)
+      with torch.autocast(device_type=device_type, dtype=torch.bfloat16, enabled=amp):
+        loss = loss_fn(model, batch, cond)
       loss.backward()
       optimize_fn(optimizer, model.parameters(), step=state['step'])
       state['step'] += 1
@@ -241,7 +245,8 @@ def get_step_fn(sde, train, optimize_fn=None, reduce_mean=False, continuous=True
         ema = state['ema']
         ema.store(model.parameters())
         ema.copy_to(model.parameters())
-        loss = loss_fn(model, batch, cond, generator=generator)
+        with torch.autocast(device_type=device_type, dtype=torch.bfloat16, enabled=amp):
+          loss = loss_fn(model, batch, cond, generator=generator)
         ema.restore(model.parameters())
 
     return loss

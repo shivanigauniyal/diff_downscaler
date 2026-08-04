@@ -15,6 +15,8 @@ def get_default_configs():
   training.continuous = True
   training.reduce_mean = False
   training.random_crop_size = 0
+  # mixed precision (autocast + GradScaler) training on CUDA; no-op on CPU
+  training.amp = False
 
   # evaluation
   config.eval = evaluate = ml_collections.ConfigDict()

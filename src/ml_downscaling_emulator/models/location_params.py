@@ -12,6 +12,10 @@ class LocationParams(torch.nn.Module):
 
 
     def forward(self, cond):
+        if self.params.shape[0] == 0:
+            # No location-specific channels configured; nothing to concatenate.
+            # Skip this to avoid DataParallel mishandling zero-element parameter replication.
+            return cond
         batch_size = cond.shape[0]
         cond = torch.cat([cond, self.params.broadcast_to((batch_size, *self.params.shape))], dim=1)
         return cond

@@ -11,12 +11,21 @@ from torch.utils.data import Dataset, DataLoader
 import xarray as xr
 
 from mlde_utils.transforms import build_input_transform, build_target_transform
+from ml_downscaling_emulator import local_transforms  # noqa: F401  registers "clip0" transform
 
 DATA_PATH = Path(os.getenv("DATA_PATH"))
 # Zarr stores live under mlde-data/data/{dataset_name}/{split}/
 DATASETS_PATH = DATA_PATH / "mlde-data" / "data"
 
 logger = logging.getLogger(__name__)
+
+
+def custom_collate(batch):
+    from torch.utils.data import default_collate
+
+    return *default_collate([tuple(e[:-1]) for e in batch]), np.concatenate(
+        [e[-1] for e in batch]
+    )
 
 
 def get_variables(config):
@@ -167,15 +176,16 @@ def get_dataloader(
             predictor_ds, static_ds, predictor_variables, static_variables
         )
 
-    def custom_collate(batch):
-        from torch.utils.data import default_collate
-
-        return *default_collate([tuple(e[:-1]) for e in batch]), np.concatenate(
-            [e[-1] for e in batch]
-        )
-
+    num_workers = min(8, os.cpu_count() or 1)
     data_loader = DataLoader(
-        pt_dataset, batch_size=batch_size, shuffle=shuffle, collate_fn=custom_collate
+        pt_dataset,
+        batch_size=batch_size,
+        shuffle=shuffle,
+        collate_fn=custom_collate,
+        num_workers=num_workers,
+        pin_memory=True,
+        persistent_workers=num_workers > 0,
+        prefetch_factor=4 if num_workers > 0 else None,
     )
 
     return data_loader

@@ -100,6 +100,10 @@ class cNCSNpp(nn.Module):
     AttnBlock = functools.partial(layerspp.AttnBlockpp,
                                   init_scale=init_scale,
                                   skip_rescale=skip_rescale)
+    if getattr(config.model, 'attention_type', 'ddpm') == 'efficient':
+      AttnBlock = functools.partial(layerspp.AttnBlockppEfficient,
+                                    init_scale=init_scale,
+                                    skip_rescale=skip_rescale)
 
     Upsample = functools.partial(layerspp.Upsample,
                                  with_conv=resamp_with_conv, fir=fir, fir_kernel=fir_kernel)

@@ -79,6 +79,7 @@ shortuuid = { version = "~=1.0" }
 tensorboard = { version = "~=2.20" }
 typer = { version = "~=0.20"}
 xarray = { version = "==2025.11.0" }
+zarr = { version = ">=2.18" }
 
 [tool.pixi.pypi-dependencies]
 ml-downscaling-emulator = { path = ".", editable = true }

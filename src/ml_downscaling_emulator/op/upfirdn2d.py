@@ -149,9 +149,18 @@ def upfirdn2d(input, kernel, up=1, down=1, pad=(0, 0)):
         )
 
     else:
-        out = UpFirDn2d.apply(
-            input, kernel, (up, up), (down, down), (pad[0], pad[1], pad[0], pad[1])
-        )
+        # Custom CUDA kernel only supports float32, so disable autocast and
+        # cast the input to float32 for this op, then cast back afterwards.
+        input_dtype = input.dtype
+        with torch.autocast(device_type="cuda", enabled=False):
+            out = UpFirDn2d.apply(
+                input.float(),
+                kernel.float(),
+                (up, up),
+                (down, down),
+                (pad[0], pad[1], pad[0], pad[1]),
+            )
+        out = out.to(input_dtype)
 
     return out
 

@@ -91,6 +91,48 @@ class AttnBlockpp(nn.Module):
       return (x + h) / np.sqrt(2.)
 
 
+class AttnBlockppEfficient(nn.Module):
+  """Channel-wise self-attention block, same parameterisation as AttnBlockpp
+  but computed with torch's fused scaled_dot_product_attention instead of an
+  explicit einsum + softmax over the full HW x HW attention matrix. This
+  avoids ever materializing the (B, H, W, H, W) attention weights tensor,
+  which is what causes OOMs at large image_size/attn_resolutions (e.g. 83x83
+  = 6889 tokens for the ANT domain)."""
+
+  def __init__(self, channels, skip_rescale=False, init_scale=0.):
+    super().__init__()
+    self.GroupNorm_0 = nn.GroupNorm(num_groups=min(channels // 4, 32), num_channels=channels,
+                                  eps=1e-6)
+    self.NIN_0 = NIN(channels, channels)
+    self.NIN_1 = NIN(channels, channels)
+    self.NIN_2 = NIN(channels, channels)
+    self.NIN_3 = NIN(channels, channels, init_scale=init_scale)
+    self.skip_rescale = skip_rescale
+
+  def forward(self, x):
+    B, C, H, W = x.shape
+    h = self.GroupNorm_0(x)
+    q = self.NIN_0(h)
+    k = self.NIN_1(h)
+    v = self.NIN_2(h)
+
+    # (B, C, H, W) -> (B, 1, H*W, C) so scaled_dot_product_attention treats
+    # each pixel as a token and attends over the whole spatial map, matching
+    # AttnBlockpp's semantics but without forming the full attention matrix
+    # explicitly (memory-efficient / flash-attention kernels handle that).
+    q = q.reshape(B, 1, C, H * W).transpose(-1, -2)
+    k = k.reshape(B, 1, C, H * W).transpose(-1, -2)
+    v = v.reshape(B, 1, C, H * W).transpose(-1, -2)
+
+    h = F.scaled_dot_product_attention(q, k, v)
+    h = h.transpose(-1, -2).reshape(B, C, H, W)
+    h = self.NIN_3(h)
+    if not self.skip_rescale:
+      return x + h
+    else:
+      return (x + h) / np.sqrt(2.)
+
+
 class Upsample(nn.Module):
   def __init__(self, in_ch=None, out_ch=None, with_conv=False, fir=False,
                fir_kernel=(1, 3, 3, 1)):

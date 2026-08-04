@@ -94,4 +94,11 @@ def fused_leaky_relu(input, bias, negative_slope=0.2, scale=2 ** 0.5):
         )
 
     else:
-        return FusedLeakyReLUFunction.apply(input, bias, negative_slope, scale)
+        # Custom CUDA kernel only supports float32, so disable autocast and
+        # cast to float32 for this op, then cast back afterwards.
+        input_dtype = input.dtype
+        with torch.autocast(device_type="cuda", enabled=False):
+            out = FusedLeakyReLUFunction.apply(
+                input.float(), bias.float(), negative_slope, scale
+            )
+        return out.to(input_dtype)

@@ -10,6 +10,10 @@ def get_config():
   # training
   training = config.training
   training.n_epochs = 2000
+  training.batch_size = 1
+  # bf16 autocast on the forward/loss pass to cut memory use (attn_resolutions=(83,)
+  # runs full self-attention on 664x664 target - see CUDA OOM debugging notes)
+  training.amp = True
 
   # data
   data = config.data
@@ -26,12 +30,20 @@ def get_config():
   # Target grid: 664x664 (11km ANT), predictor grid: 60x75 (100km ANT)
   data.image_size = 664
   data.predictor_image_size = 60
-  # target_pr uses default sqrturrecen; override target_tas with standardise+recentre
+  # clip target_pr to 0 before sqrt (regridding leaves tiny negative noise
+  # that produces NaN under the default sqrturrecen transform's raw sqrt);
+  # override target_tas with standardise+recentre
   data.target_transform_overrides = ml_collections.ConfigDict()
+  data.target_transform_overrides.target_pr = "clip0;sqrt;ur;recen"
   data.target_transform_overrides.target_tas = "mm;recen"
 
   # model: attention at coarsest resolution (664 / 2^3 = 83)
   model = config.model
   model.attn_resolutions = (83,)
+  # Use memory-efficient attention (torch scaled_dot_product_attention) instead
+  # of the legacy explicit einsum+softmax attention (AttnBlockpp), which OOMs
+  # at this resolution because it materializes the full 83x83 x 83x83
+  # attention matrix. Set back to 'ddpm' to restore the legacy block if needed.
+  model.attention_type = 'efficient'
 
   return config

@@ -5,8 +5,8 @@
 #SBATCH --qos=orchid
 #SBATCH --gres=gpu:1
 #SBATCH --time=23:30:30
-#SBATCH --mem=64G
-#SBATCH --cpus-per-task=16 
+#SBATCH --mem=128G
+#SBATCH --cpus-per-task=16
 #SBATCH --output=/gws/ssde/j25a/extant/users/ssharma/data_processed_addison/logs/%j.out
 #SBATCH --error=/gws/ssde/j25a/extant/users/ssharma/data_processed_addison/logs/%j.err
 

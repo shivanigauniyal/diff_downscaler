@@ -94,6 +94,12 @@ def train(config, workdir):
   with open(config_path, 'w') as f:
     f.write(config.to_yaml())
 
+  # Fixed input sizes throughout training, so let cuDNN pick the fastest
+  # algorithms, and allow TF32 matmuls/convs for faster throughput on A100s
+  torch.backends.cudnn.benchmark = True
+  torch.backends.cuda.matmul.allow_tf32 = True
+  torch.backends.cudnn.allow_tf32 = True
+
   # Create transform saving directory
   transform_dir = os.path.join(workdir, "transforms")
   os.makedirs(transform_dir, exist_ok=True)
@@ -212,11 +218,13 @@ def train(config, workdir):
     train_step_fn = losses.get_step_fn(sde, train=True, optimize_fn=optimize_fn,
                                       reduce_mean=reduce_mean, continuous=continuous,
                                       likelihood_weighting=likelihood_weighting,
-                                      deterministic=deterministic,)
+                                      deterministic=deterministic,
+                                      amp=config.training.amp,)
     eval_step_fn = losses.get_step_fn(sde, train=False, optimize_fn=optimize_fn,
                                       reduce_mean=reduce_mean, continuous=continuous,
                                       likelihood_weighting=likelihood_weighting,
-                                      deterministic=deterministic,)
+                                      deterministic=deterministic,
+                                      amp=config.training.amp,)
 
     num_train_epochs = config.training.n_epochs
 
