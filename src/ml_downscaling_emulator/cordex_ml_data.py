@@ -143,6 +143,7 @@ def get_dataloader(
     batch_size,
     shuffle=True,
     training=True,
+    drop_last=False,
 ):
     predictor_ds = open_raw_dataset_split_predictors(
         dataset_name,
@@ -186,6 +187,7 @@ def get_dataloader(
         pin_memory=True,
         persistent_workers=num_workers > 0,
         prefetch_factor=4 if num_workers > 0 else None,
+        drop_last=drop_last,
     )
 
     return data_loader
@@ -198,6 +200,12 @@ class CordexMLDataset(Dataset):
 
         self.predictor_da = predictor_ds[self.variables].cf.transpose("T", "Y", "X")
         self.static_da = static_ds.cf.transpose("Y", "X")[self.static_variables]
+        # static fields (e.g. orography) aren't standardised upstream like the
+        # predictor/target variables are, so scale each to roughly unit range
+        for var in self.static_variables:
+            scale = float(np.abs(self.static_da[var].values).max())
+            if scale > 0:
+                self.static_da[var] = self.static_da[var] / scale
 
     def __len__(self):
         return len(self.predictor_da.time)

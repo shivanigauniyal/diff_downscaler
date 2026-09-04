@@ -296,7 +296,13 @@ class cNCSNpp(nn.Module):
       for i_block in range(self.num_res_blocks):
         h = modules[m_idx](hs[-1], temb)
         m_idx += 1
-        if h.shape[-1] in self.attn_resolutions:
+        # NOTE: use the resolution ladder derived from config.data.image_size
+        # (fixed at construction time), not h.shape[-1], to decide whether an
+        # attention module was built for this stage. Using runtime shape
+        # breaks module-index bookkeeping when training on cropped patches
+        # (random_crop_size != image_size), since the crop's resolution
+        # ladder generally doesn't intersect image_size's.
+        if self.all_resolutions[i_level] in self.attn_resolutions:
           h = modules[m_idx](h)
           m_idx += 1
 
@@ -342,7 +348,8 @@ class cNCSNpp(nn.Module):
         h = modules[m_idx](torch.cat([h, hs.pop()], dim=1), temb)
         m_idx += 1
 
-      if h.shape[-1] in self.attn_resolutions:
+      # See NOTE above: use all_resolutions[i_level], not h.shape[-1].
+      if self.all_resolutions[i_level] in self.attn_resolutions:
         h = modules[m_idx](h)
         m_idx += 1
 

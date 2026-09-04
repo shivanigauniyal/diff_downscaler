@@ -10,10 +10,21 @@ def get_config():
   # training
   training = config.training
   training.n_epochs = 2000
-  training.batch_size = 1
+  # Single-GPU config (confirmed working, job 43708040: ~13.6 samples/s).
+  # 4-GPU nn.DataParallel (batch_size=16) was tried but hit repeated GPU-fault/
+  # hang issues (jobs 43714182, 43904412) - reverted to single-GPU until a
+  # proper DDP refactor is done.
+  training.batch_size = 4
   # bf16 autocast on the forward/loss pass to cut memory use (attn_resolutions=(83,)
   # runs full self-attention on 664x664 target - see CUDA OOM debugging notes)
   training.amp = True
+  # Patch-based training: random-crop both target and (upsampled) predictor to
+  # this size each step instead of training on the full 664x664 domain. Cuts
+  # per-step activation memory (lets batch_size go back up) and speeds up
+  # training; at 11km/pixel a 256px patch still spans ~2800km, larger than
+  # typical synoptic-scale systems, so this should retain most useful context.
+  # Set to 0 to disable and train on the full image_size again.
+  training.random_crop_size = 256
 
   # data
   data = config.data
@@ -26,7 +37,9 @@ def get_config():
       "zg250",  "zg500",  "zg850",
   )
   data.target_variables = ("target_pr", "target_tas")
-  data.static_variables = ()
+  # orography (0 over ocean, ~2300m mean over the ice sheet) so the model has
+  # a direct high-res signal to distinguish ocean from land/ice
+  data.static_variables = ("surface_altitude",)
   # Target grid: 664x664 (11km ANT), predictor grid: 60x75 (100km ANT)
   data.image_size = 664
   data.predictor_image_size = 60

@@ -272,7 +272,10 @@ class NCSNpp(nn.Module):
       for i_block in range(self.num_res_blocks):
         h = modules[m_idx](hs[-1], temb)
         m_idx += 1
-        if h.shape[-1] in self.attn_resolutions:
+        # NOTE: use all_resolutions[i_level] (construction-time), not
+        # h.shape[-1] (runtime) - see cncsnpp.py for rationale (patch/crop
+        # training breaks module-index bookkeeping otherwise).
+        if self.all_resolutions[i_level] in self.attn_resolutions:
           h = modules[m_idx](h)
           m_idx += 1
 
@@ -318,7 +321,8 @@ class NCSNpp(nn.Module):
         h = modules[m_idx](torch.cat([h, hs.pop()], dim=1), temb)
         m_idx += 1
 
-      if h.shape[-1] in self.attn_resolutions:
+      # See NOTE above: use all_resolutions[i_level], not h.shape[-1].
+      if self.all_resolutions[i_level] in self.attn_resolutions:
         h = modules[m_idx](h)
         m_idx += 1
 

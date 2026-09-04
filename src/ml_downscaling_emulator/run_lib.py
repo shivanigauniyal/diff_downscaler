@@ -108,7 +108,12 @@ def train(config, workdir):
   sample_dir = os.path.join(workdir, "samples")
   os.makedirs(sample_dir, exist_ok=True)
 
-  tb_dir = os.path.join(workdir, "tensorboard")
+  # Give each SLURM job its own TensorBoard run subdirectory so that
+  # restarts/resubmissions show up as distinct runs in the TensorBoard UI
+  # instead of being merged into a single run (which is what happens when
+  # multiple event files land directly in the same logdir).
+  job_id = os.getenv("SLURM_JOB_ID", "local")
+  tb_dir = os.path.join(workdir, "tensorboard", job_id)
   os.makedirs(tb_dir, exist_ok=True)
 
   target_xfm_keys = defaultdict(lambda: config.data.target_transform_key) | dict(config.data.target_transform_overrides)
@@ -157,6 +162,12 @@ def train(config, workdir):
       batch_size=config.training.batch_size,
       shuffle=True,
       training=True,
+      # Drop the final undersized batch so every batch splits evenly across
+      # all GPUs under nn.DataParallel. A leftover batch smaller than the
+      # GPU count (or just unevenly divisible) gets scattered as e.g.
+      # 3,3,2,1 samples per GPU, which can crash custom CUDA kernels with a
+      # deferred/async "unspecified launch failure" reported on a later step.
+      drop_last=True,
     )
 
     eval_dl = get_dataloader(
@@ -170,6 +181,9 @@ def train(config, workdir):
       batch_size=config.training.batch_size,
       shuffle=False,
       training=True,
+      # Same reasoning as train_dl above - avoid uneven per-GPU scatter on
+      # the last batch.
+      drop_last=True,
     )
 
     # Initialize model.
