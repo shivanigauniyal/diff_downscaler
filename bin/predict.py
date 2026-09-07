@@ -79,6 +79,10 @@ def load_config(config_path):
     with open(config_path) as f:
         config = config_dict.ConfigDict(yaml.unsafe_load(f))
 
+    # break any live field-references (e.g. sampling.num_scales -> model.num_scales)
+    # so overriding one field can't silently mutate another
+    config = config_dict.ConfigDict(config.to_dict())
+
     return config
 
 

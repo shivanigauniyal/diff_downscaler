@@ -1,6 +1,9 @@
 # Ignore unet (managed in another repo)
 src/ml_downscaling_emulator/unet
 
+# Trained model checkpoints/samples - too large for git
+model_weights/
+
 # Experiment tracking data
 checkpoints/
 mlruns/
